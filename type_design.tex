@@ -1,0 +1,332 @@
+% ============================================================
+%  BBL Type System  Formal Specification
+%  Best Business Language
+% ============================================================
+
+\documentclass[11pt, letterpaper]{article}
+
+% --- Core packages ---
+\usepackage{amsmath}           % Math environments
+\usepackage{amssymb}           % Math symbols (⊥, ⊤, etc.)
+\usepackage{stmaryrd}          % Semantic brackets ⟦ ⟧
+\usepackage{mathpartir}        % Inference rules (inferrule)
+\usepackage{geometry}          % Page layout
+\usepackage{hyperref}          % Clickable TOC and cross-refs
+\usepackage{xcolor}            % Colors
+\usepackage{listings}          % Code listings
+\usepackage{titlesec}          % Section formatting
+\usepackage{booktabs}          % Nice tables
+\usepackage{enumitem}          % List formatting
+\usepackage{microtype}         % Better typography
+
+% --- Page geometry ---
+\geometry{
+  margin=1.25in,
+  top=1in,
+  bottom=1in
+}
+
+% --- Colors ---
+\definecolor{bblblue}{RGB}{30, 90, 160}
+\definecolor{bblgray}{RGB}{100, 100, 100}
+\definecolor{codebg}{RGB}{245, 245, 245}
+
+% --- Hyperref setup ---
+\hypersetup{
+  colorlinks=true,
+  linkcolor=bblblue,
+  urlcolor=bblblue,
+  citecolor=bblblue,
+  pdftitle={BBL Type System},
+  pdfauthor={Chris},
+}
+
+% --- Section formatting ---
+\titleformat{\section}{\large\bfseries\color{bblblue}}{§\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{§\thesection.\thesubsection}{1em}{}
+
+% --- Code listing style (for BBL code examples) ---
+\lstdefinelanguage{BBL}{
+  morekeywords={
+    let, fn, struct, enum, match, if, else, return,
+    int, float, decimal, bool, string, void
+  },
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+}
+
+\lstset{
+  language=BBL,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries\color{bblblue},
+  commentstyle=\itshape\color{bblgray},
+  stringstyle=\color{bblblue},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{bblgray},
+  xleftmargin=1em,
+  xrightmargin=1em,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=2,
+}
+
+% ============================================================
+%  NOTATION MACROS
+%  Use these consistently throughout the document.
+% ============================================================
+
+% Typing judgment:  Γ ⊢ e : τ
+\newcommand{\hastype}[3]{#1 \vdash #2 : #3}
+
+% Type context
+\newcommand{\ctx}{\Gamma}
+
+% Empty context
+\newcommand{\emptyctx}{\cdot}
+
+% Context extension:  Γ, x : τ
+\newcommand{\ctxext}[3]{#1, #2 : #3}
+
+% Metavariables
+\newcommand{\tvar}{\alpha}          % Type variable
+\newcommand{\tvarf}{\beta}          % Second type variable
+\newcommand{\expr}{e}               % Expression metavariable
+\newcommand{\typ}{\tau}             % Type metavariable
+\newcommand{\typB}{\sigma}          % Second type metavariable
+
+% Built-in types
+\newcommand{\tInt}{\mathtt{Int}}
+\newcommand{\tFloat}{\mathtt{Float}}
+\newcommand{\tDecimal}{\mathtt{Decimal}}
+\newcommand{\tBool}{\mathtt{Bool}}
+\newcommand{\tString}{\mathtt{String}}
+\newcommand{\tVoid}{\mathtt{Void}}
+\newcommand{\tBottom}{\bot}
+
+% Type constructors
+\newcommand{\tarrow}[2]{#1 \to #2}             % Function type
+\newcommand{\tOption}[1]{\mathtt{Option}\langle#1\rangle}
+\newcommand{\tResult}[2]{\mathtt{Result}\langle#1,\,#2\rangle}
+\newcommand{\tList}[1]{\mathtt{List}\langle#1\rangle}
+
+% Subtyping
+\newcommand{\subtype}{\mathrel{<:}}
+
+% Substitution:  [τ / α]
+\newcommand{\subst}[2]{[#1 / #2]}
+
+% Semantic brackets
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+
+% ============================================================
+\begin{document}
+
+% --- Title page ---
+\begin{titlepage}
+  \centering
+  \vspace*{2in}
+  {\Huge\bfseries\color{bblblue} BBL Type System}\\[0.5em]
+  {\large\color{bblgray} Best Business Language  Formal Specification}\\[2em]
+  {\normalsize Version 0.1  Draft}\\[0.5em]
+  {\normalsize \today}
+  \vfill
+  {\small\color{bblgray}
+    Mascot: Drizzald \\
+    This document is the authoritative formal specification of the BBL type system.
+  }
+\end{titlepage}
+
+% --- Table of contents ---
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Introduction}
+
+This document specifies the type system of BBL (Best Business Language).
+BBL is a statically typed, business-oriented language with C-style syntax.
+Its type system is designed to catch common business-domain errors at compile
+time  incorrect currency arithmetic, unchecked absence, and unhandled errors 
+while remaining accessible to developers without a formal CS background.
+
+\subsection{Design Goals}
+
+\begin{enumerate}[label=\textbf{G\arabic*.}]
+  \item \textbf{Safety.} Ill-typed programs must not compile.
+  \item \textbf{Expressiveness.} The type system must model business domain
+        concepts (monetary values, nullable fields, fallible operations) without
+        requiring boilerplate.
+  \item \textbf{Inference.} Type annotations should be optional in most
+        local contexts.
+  \item \textbf{Readability.} Type errors must be understandable by
+        practitioners, not just compiler authors.
+\end{enumerate}
+
+\subsection{Notation}
+
+Throughout this document, we use the following conventions.
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  \textbf{Notation} & \textbf{Meaning} \\
+  \midrule
+  $\ctx$                          & Type context (maps variables to types) \\
+  $\emptyctx$                     & Empty context \\
+  $\hastype{\ctx}{e}{\typ}$       & Expression $e$ has type $\typ$ in context $\ctx$ \\
+  $\tarrow{\typ}{\typB}$          & Function type from $\typ$ to $\typB$ \\
+  $\typ \subtype \typB$           & $\typ$ is a subtype of $\typB$ \\
+  $\subst{\typ}{\tvar}$           & Substitute $\typ$ for type variable $\tvar$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================
+\section{Primitive Types}
+
+BBL provides the following built-in primitive types.
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  \textbf{Type} & \textbf{Description} & \textbf{Example literal} \\
+  \midrule
+  $\tInt$     & 64-bit signed integer            & \lstinline|42| \\
+  $\tFloat$   & 64-bit IEEE 754 float            & \lstinline|3.14| \\
+  $\tDecimal$ & Arbitrary-precision decimal      & \lstinline|19.99d| \\
+  $\tBool$    & Boolean                          & \lstinline|true|, \lstinline|false| \\
+  $\tString$  & UTF-8 string                     & \lstinline|"hello"| \\
+  $\tVoid$    & Unit  no meaningful value       & (implicit) \\
+  $\tBottom$  & Bottom  computation never returns & (implicit) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Typing Rules  Literals}
+
+\begin{mathpar}
+\inferrule*[Right=T-Int]
+  { n \in \mathbb{Z} }
+  { \hastype{\ctx}{n}{\tInt} }
+
+\inferrule*[Right=T-Float]
+  { f \in \mathbb{R} }
+  { \hastype{\ctx}{f}{\tFloat} }
+
+\inferrule*[Right=T-Bool-True]
+  { }
+  { \hastype{\ctx}{\mathtt{true}}{\tBool} }
+
+\inferrule*[Right=T-Bool-False]
+  { }
+  { \hastype{\ctx}{\mathtt{false}}{\tBool} }
+
+\inferrule*[Right=T-String]
+  { s \in \mathtt{UTF\text{-}8} }
+  { \hastype{\ctx}{s}{\tString} }
+\end{mathpar}
+
+% ============================================================
+\section{Arithmetic}
+
+\subsection{Integer Arithmetic}
+
+\begin{mathpar}
+\inferrule*[Right=T-Add-Int]
+  { \hastype{\ctx}{e_1}{\tInt} \\ \hastype{\ctx}{e_2}{\tInt} }
+  { \hastype{\ctx}{e_1 + e_2}{\tInt} }
+
+\inferrule*[Right=T-Sub-Int]
+  { \hastype{\ctx}{e_1}{\tInt} \\ \hastype{\ctx}{e_2}{\tInt} }
+  { \hastype{\ctx}{e_1 - e_2}{\tInt} }
+
+\inferrule*[Right=T-Mul-Int]
+  { \hastype{\ctx}{e_1}{\tInt} \\ \hastype{\ctx}{e_2}{\tInt} }
+  { \hastype{\ctx}{e_1 * e_2}{\tInt} }
+\end{mathpar}
+
+\noindent\textbf{Design note:} Integer division is deliberately excluded from
+this section pending a decision on whether BBL uses truncating or flooring
+semantics. See open question \S\ref{sec:open}.
+
+% ============================================================
+\section{Variables and Functions}
+
+\subsection{Variable Lookup}
+
+\begin{mathpar}
+\inferrule*[Right=T-Var]
+  { (x : \typ) \in \ctx }
+  { \hastype{\ctx}{x}{\typ} }
+\end{mathpar}
+
+\subsection{Function Types}
+
+A function from $\typ$ to $\typB$ is written $\tarrow{\typ}{\typB}$.
+
+\begin{mathpar}
+\inferrule*[Right=T-Abs]
+  { \hastype{\ctxext{\ctx}{x}{\typ_1}}{e}{\typ_2} }
+  { \hastype{\ctx}{\lambda x{:}\typ_1.\; e}{\tarrow{\typ_1}{\typ_2}} }
+
+\inferrule*[Right=T-App]
+  { \hastype{\ctx}{e_1}{\tarrow{\typ_1}{\typ_2}} \\
+    \hastype{\ctx}{e_2}{\typ_1} }
+  { \hastype{\ctx}{e_1\; e_2}{\typ_2} }
+\end{mathpar}
+
+% ============================================================
+\section{Composite Types}
+
+\subsection{Structs (Product Types)}
+
+% TODO: define struct typing rules
+
+\subsection{Enums (Sum Types)}
+
+% TODO: define enum / variant typing rules
+
+\subsection{Option}
+
+$\tOption{\typ}$ represents a value that may be absent.
+BBL does not have \texttt{null}  absence is always explicit.
+
+% TODO: define Option introduction and elimination rules
+
+\subsection{Result}
+
+$\tResult{\typ}{\typB}$ represents a computation that may fail with error type $\typB$.
+
+% TODO: define Result introduction and elimination rules
+
+% ============================================================
+\section{Generics}
+
+% TODO: parametric polymorphism rules
+
+% ============================================================
+\section{Subtyping}
+
+% TODO: subtyping relation and rules
+
+% ============================================================
+\section{Open Questions}
+\label{sec:open}
+
+\begin{enumerate}[label=\textbf{Q\arabic*.}]
+  \item \textbf{Integer division semantics.} Truncating (toward zero) or flooring
+        (toward negative infinity)?
+  \item \textbf{Implicit coercions.} Should $\tInt$ coerce implicitly to
+        $\tFloat$? To $\tDecimal$?
+  \item \textbf{Variance.} How are generic type parameters treated with respect
+        to subtyping  covariant, contravariant, or invariant?
+  \item \textbf{Trait / interface bounds.} Syntax and semantics for constraining
+        type variables (e.g., \lstinline|T: Numeric|).
+\end{enumerate}
+
+% ============================================================
+\end{document}
